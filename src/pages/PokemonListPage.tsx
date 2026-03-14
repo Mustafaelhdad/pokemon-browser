@@ -5,7 +5,9 @@ import { ErrorState } from "../components/ErrorState";
 import { GridSkeleton } from "../components/GridSkeleton";
 import { PaginationControls } from "../components/PaginationControls";
 import { PokemonGrid } from "../components/PokemonGrid";
+import { usePokemonInfinite } from "../hooks/usePokemonInfinite";
 import { usePokemonPage } from "../hooks/usePokemonPage";
+import { LoadMoreSection } from "../components/LoadMoreSection";
 
 export const PAGE_SIZE = 20;
 
@@ -19,10 +21,34 @@ export function PokemonListPage() {
 
   const { data, isPending, isError, refetch } = usePokemonPage(page, PAGE_SIZE);
 
+  const {
+    data: infiniteData,
+    isPending: isInfinitePending,
+    isError: isInfiniteError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    refetch: refetchInfinite,
+  } = usePokemonInfinite(PAGE_SIZE);
+
   const totalPages = useMemo(() => {
     if (!data) return 0;
     return Math.ceil(data.count / PAGE_SIZE);
   }, [data]);
+
+  const allPokemon = useMemo(() => {
+    if (!infiniteData) return [];
+
+    const seen = new Set<string>();
+    return infiniteData.pages.flatMap((page) =>
+      page.results.filter((pokemon) => {
+        if (seen.has(pokemon.name)) return false;
+        seen.add(pokemon.name);
+        return true;
+      }),
+    );
+  }, [infiniteData]);
 
   function handleChangeView(view: ViewMode) {
     setSearchParams({ view });
@@ -77,9 +103,21 @@ export function PokemonListPage() {
         </header>
 
         {currentView === "load-more" ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <p className="text-slate-700">Load More view</p>
-          </div>
+          isInfinitePending ? (
+            <GridSkeleton count={10} />
+          ) : isInfiniteError && !infiniteData ? (
+            <ErrorState onRetry={() => refetchInfinite()} />
+          ) : (
+            <>
+              <PokemonGrid pokemonList={allPokemon} />
+              <LoadMoreSection
+                onLoadMore={() => fetchNextPage()}
+                hasNextPage={hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                isFetchNextPageError={isFetchNextPageError}
+              />
+            </>
+          )
         ) : isPending ? (
           <GridSkeleton count={10} />
         ) : isError ? (
